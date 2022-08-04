@@ -1,0 +1,15 @@
+# Soroban-compatible primitive Expressions Evaluator
+
+Implementation of fully-contextual helper functions to evaluate a very basic subset of expressions and returning a boolean.
+
+For instance, if you want your smart contract to evaluate this string: `a + b >= c` where `a = 1`, `b = 2`, and `c = 3`, you might find this code useful. Since this code was extracted from a larger contract I'm building that only needed to evaluate very simple expressions, the helper funcitons only allow additions (as well as subtractions). No logical operators or other operations are supported.
+
+### Evaluating an expression
+As showed in the `src/test.rs` file, expressions are a structure were the expression string is a vector of `Symbols`, where each synbol is either an operator or a variable.
+
+The functions assume that everything in the expression is either an operator or a variable to be added to the context, so in an expression like `a - 2 == 1`, you'll have to define to which value `1` and `2` correspond to.
+
+Also, since everything is based on the `Symbol` type, operators can't contain characters like `==` or `+`, as a result, these are the supported operators:
+
+- `eq` -> `==`
+- `eq` -> `==`
