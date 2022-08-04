@@ -1,0 +1,282 @@
+#![no_std]
+use soroban_sdk::{contractimpl, contracttype, Env, Symbol, Vec, vec, FixedBinary, Map, RawVal, IntoVal, TryFromVal};
+
+pub enum SourceValue {
+    usize(usize),
+    Symbol(Symbol)
+}
+
+pub struct SourceOut {
+    pub name: Symbol,
+    pub value: SourceValue
+}
+
+pub struct testing {
+    test: Vec<u32>
+}
+
+pub struct OptionSetting {
+    pub condition: Symbol,
+    pub id: Symbol,
+    pub reference_name: Symbol,
+    pub odd: u32
+}
+
+pub struct BetOption {
+    pub name: Symbol,
+    pub entries: Vec<OptionSetting>
+}
+
+pub struct Source {
+    pub name: Symbol,
+    pub description: Symbol,
+    pub endpoint: Symbol
+}
+
+
+
+pub struct MarketSetting {
+    pub name: Symbol,
+    pub description: Symbol,
+    pub sources: Vec<Source>,
+    pub start: usize,
+    pub end: usize,
+    pub bet_options: Vec<BetOption>,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Name {
+    None,
+    FirstLast(FirstLast),
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FirstLast {
+    pub first: Symbol,
+    pub last: Symbol,
+}
+
+
+/*
+
+agoals = 2
+bgoals = 3
+
+2 + 3 == 3 && 2 >= 3
+
+|| doesn't seem to make much sense since "more than 3 goals or less than 1" can be split in two options
+
+1) locate && symbol index, divide the vector in subvectors
+
+2) for each subvector locate comparison operators [==, >=, <=, >, <, !=] index divide in subsub vectors
+
+ 2 + 3 + 4 ==  3
+ 0 1 2 3 4  5  6
+|         |   | |
+-----------   ---
+ 
+for subsub
+ if subsub length == 1
+     [subsub[0]]
+else {
+for 0..4
+if basic_operator [+, -]
+2 + 3 -> 5
+5 + 4 -> 9
+[9] 
+else panic
+}
+
+
+
+ */
+#[contracttype]
+#[derive(Clone)]
+pub struct VarMap {
+    pub name: Symbol,
+    pub value: u32
+}
+
+
+#[derive(Clone)]
+pub struct Expr {
+    pub expression: Vec<Symbol>,
+    pub variables: Vec<VarMap>,
+}
+
+#[contracttype]
+#[derive(Clone, PartialEq, Debug)]
+pub enum MathEl {
+    U32(u32),
+    Symbol(Symbol)
+}
+
+impl MathEl {
+    fn explicit(self) -> u32 {
+	let val = match self {
+	    MathEl::U32(val) => val,
+	    _ => panic!()
+	};
+	return val
+    }
+}
+
+
+fn math_el_add(lhs: MathEl, rhs: MathEl) -> MathEl  {
+    let lhs_val = match lhs {
+	MathEl::U32(val) => val,
+	_ => panic!("failed unluck {:?}", lhs)
+    };
+    let rhs_val = match rhs {
+	MathEl::U32(val) => val,
+	_ => panic!()
+    };
+
+    MathEl::U32(lhs_val + rhs_val)
+}
+
+
+fn math_el_sub(lhs: MathEl, rhs: MathEl) -> MathEl {
+    let lhs_val = match lhs {
+	MathEl::U32(val) => val,
+	_ => panic!()
+    };
+    let rhs_val = match rhs {
+	MathEl::U32(val) => val,
+	_ => panic!()
+    };
+
+    MathEl::U32(lhs_val - rhs_val)
+}
+
+pub fn new_expr(expr_vec: Vec<Symbol>, vars: Vec<VarMap>) -> Expr {
+    Expr {
+	expression: expr_vec,
+	variables: vars,
+    }
+}
+
+pub fn eval(env: &Env, expression: Expr) -> bool {
+    let mut comp_idxs = Vec::new(&env);
+    let mut comp_op: MathEl = MathEl::U32(0);
+    let math_expr = to_math(&env, &expression);
+    
+    for expr_idx in 0..math_expr.len() {
+	if math_expr.get(expr_idx).unwrap().unwrap() == MathEl::Symbol(Symbol::from_str("eq")) || math_expr.get(expr_idx).unwrap().unwrap() == MathEl::Symbol(Symbol::from_str("gt")) || math_expr.get(expr_idx).unwrap().unwrap() == MathEl::Symbol(Symbol::from_str("lt")) || math_expr.get(expr_idx).unwrap().unwrap() == MathEl::Symbol(Symbol::from_str("gg")) || math_expr.get(expr_idx).unwrap().unwrap() == MathEl::Symbol(Symbol::from_str("ll")) {
+	    comp_idxs.push(expr_idx);
+	    comp_op = math_expr.get(expr_idx).unwrap().unwrap()
+	}
+    };
+
+    if comp_idxs.len() == 1 {
+	let left = math_expr.slice(0..comp_idxs.get_unchecked(0).unwrap());
+	let right = math_expr.slice(comp_idxs.get_unchecked(0).unwrap()+1..math_expr.len());
+	let mut lhs_res: MathEl;
+	let mut rhs_res: MathEl;
+
+	lhs_res = math_el_add(left.get_unchecked(0).unwrap(), MathEl::U32(0));
+	rhs_res = math_el_add(right.get_unchecked(0).unwrap(), MathEl::U32(0));
+	
+	if left.len() > 1 {
+	    for sub_idx in 0..left.len() {
+		if left.get_unchecked(sub_idx).unwrap() == MathEl::Symbol(Symbol::from_str("add")) {
+		    lhs_res = math_el_add(lhs_res, left.get_unchecked(sub_idx + 1).unwrap());
+		} else if left.get_unchecked(sub_idx).unwrap() == MathEl::Symbol(Symbol::from_str("sub")) {
+		    lhs_res = math_el_sub(lhs_res, left.get_unchecked(sub_idx + 1).unwrap());
+		};
+	    };
+	}
+
+	if right.len() > 1 {
+	    for sub_idx in 0..right.len() {
+		if right.get_unchecked(sub_idx).unwrap() == MathEl::Symbol(Symbol::from_str("add")) {
+		    rhs_res = math_el_add(rhs_res, right.get_unchecked(sub_idx + 1).unwrap());
+		} else if right.get_unchecked(sub_idx).unwrap() == MathEl::Symbol(Symbol::from_str("sub")) {
+		    rhs_res = math_el_sub(rhs_res, right.get_unchecked(sub_idx + 1).unwrap());
+		};
+	    };
+	}
+
+	let op_symbol = match comp_op {
+	    MathEl::Symbol(symbol) => symbol,
+	    _ => panic!()
+	};
+	let equal_op = Symbol::from_str("eq");
+	return match op_symbol {
+	    equal_op => {
+		let lhs_value = lhs_res.explicit();
+		let rhs_value = rhs_res.explicit();
+		
+		let out: bool = lhs_value == rhs_value;
+
+		return out
+	    }
+	};
+	
+	
+    } else {
+	panic!("unsupported expression with none, two, or more comparison operators")
+    }
+}
+
+pub fn to_math(env: &Env, expression: &Expr) -> Vec<MathEl> {
+    let mut math_expr: Vec<MathEl> = Vec::new(env);
+    let mut var_names: Vec<Symbol> = Vec::new(env);
+    for var_idx in 0..expression.variables.len() {
+	var_names.push(expression.variables.get(var_idx).unwrap().unwrap().name);
+    }
+
+    for sym_idx in 0..expression.expression.len() {
+	if &expression.expression.get(sym_idx).unwrap().unwrap() == &Symbol::from_str("eq") || &expression.expression.get(sym_idx).unwrap().unwrap() == &Symbol::from_str("gt") || &expression.expression.get(sym_idx).unwrap().unwrap() == &Symbol::from_str("lt") || &expression.expression.get(sym_idx).unwrap().unwrap() == &Symbol::from_str("gg") || &expression.expression.get(sym_idx).unwrap().unwrap() == &Symbol::from_str("ll") || &expression.expression.get(sym_idx).unwrap().unwrap() == &Symbol::from_str("noneq") || &expression.expression.get(sym_idx).unwrap().unwrap() == &Symbol::from_str("add") || &expression.expression.get(sym_idx).unwrap().unwrap() == &Symbol::from_str("sub") {
+	    math_expr.push(MathEl::Symbol(expression.expression.get(sym_idx).unwrap().unwrap()))
+	} else {
+	    let index = match expression.variables.iter().position(|r| r.unwrap().name == expression.expression.get(sym_idx).unwrap().unwrap()) {
+		Some(idx) => idx as u32,
+		None => panic!("expression uses undeclared vars")
+	    };
+
+	    let value:u32 = expression.variables.get(index).unwrap().unwrap().value;
+	    math_expr.push(MathEl::U32(value))
+	}
+    };
+
+    math_expr
+}
+
+
+
+
+const COUNTER: Symbol = Symbol::from_str("COUNTER");
+
+pub struct IncrementContract;
+
+#[contractimpl(export_if = "export")]
+impl IncrementContract {
+    /// Increment increments an internal counter, and returns the value.
+    pub fn increment(env: Env) -> u32 {
+
+//	let new_vec = my_vec.iter().map(|var| var)
+	
+        // Get the current count.
+        let mut count: u32 = env
+            .contract_data()
+            .get(COUNTER)
+            .unwrap_or(Ok(0)) // If no value set, assume 0.
+            .unwrap(); // Panic if the value of COUNTER is not u32.
+
+        // Increment the count.
+        count += 1;
+
+        // Save the count.
+        env.contract_data().set(COUNTER, count);
+
+        // Return the count to the caller.
+        count
+    }
+}
+
+
+
+mod test;

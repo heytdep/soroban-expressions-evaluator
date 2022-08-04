@@ -1,0 +1,26 @@
+#![no_std]
+#![cfg(test)]
+
+use super::{increment, IncrementContract, Expr, VarMap, new_expr, to_math, eval, MathEl};
+use soroban_sdk::{Env, FixedBinary, vec, Symbol};
+
+#[test]
+fn test() {
+    let env = Env::default();
+    let contract_id = FixedBinary::from_array(&env, [0; 32]);
+    env.register_contract(&contract_id, IncrementContract);
+
+    let count = increment::invoke(&env, &contract_id);
+    assert_eq!(count, 1);
+
+    let count = increment::invoke(&env, &contract_id);
+    assert_eq!(count, 2);
+
+    let count = increment::invoke(&env, &contract_id);
+    assert_eq!(count, 3);
+
+    let expr = new_expr(vec![&env, Symbol::from_str("a"), Symbol::from_str("add"), Symbol::from_str("b"), Symbol::from_str("eq"), Symbol::from_str("3")], vec![&env, VarMap {name: Symbol::from_str("a"), value:1}, VarMap {name: Symbol::from_str("3"), value:3}, VarMap {name: Symbol::from_str("b"), value:2}]);
+    let math = to_math(&env, &expr);
+    let out: bool = eval(&env, expr);
+    assert_eq!(out, true);
+}
